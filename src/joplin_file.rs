@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 
 pub struct JoplinFile {
+    // TODO: I wonder how difficult it would be to use slices instead of strings for 'title', 'body' and 'front_matter'?
     pub title: String,
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
@@ -8,6 +9,8 @@ pub struct JoplinFile {
     pub front_matter: String,
     pub front_matter_start_pos: usize,
     pub front_matter_end_pos: usize,
+
+    pub body: String,
 }
 
 impl JoplinFile {
@@ -25,6 +28,9 @@ impl JoplinFile {
             .get(front_matter_start_pos..front_matter_end_pos)
             .ok_or("Could not find front matter")?;
 
+        let body = content.get(front_matter_end_pos..)
+            .ok_or("Could not find body")?;
+
         let title = Self::find_title(front_matter).ok_or("Could not find title")?;
 
         let created = Self::find_created(front_matter).ok_or("Could not find created")?;
@@ -37,6 +43,7 @@ impl JoplinFile {
             front_matter: front_matter.to_string(),
             front_matter_start_pos,
             front_matter_end_pos,
+            body: body.to_string(),
         })
     }
 
@@ -180,24 +187,24 @@ mod tests {
     #[test]
     fn test_build() {
         // arrange
-        let test_cases = vec![
-            "\
+        let test_cases: Vec<(&str, &str)> = vec![
+            ("\
 ---
 title: Test
 created: 2024-03-07T23:22:26Z
 updated: 2024-04-07T08:34:52Z
----\n",
-            "\
+---\n", ""),
+            ("\
 ---
 title: Test
 created: 2024-03-07T23:22:26Z
 updated: 2024-04-07T08:34:52Z
 ---
 
-The content\n",
+The content\n", "\nThe content\n")
         ];
 
-        for test_case in test_cases {
+        for (test_case, expected_body) in test_cases {
             // act
             let result = JoplinFile::build(test_case);
 
@@ -220,6 +227,10 @@ The content\n",
             assert_eq!(
                 joplin_file.updated,
                 DateTime::parse_from_rfc3339("2024-04-07T08:34:52Z").unwrap().to_utc()
+            );
+            assert_eq!(
+                joplin_file.body,
+                expected_body.to_string()
             );
         }
     }
