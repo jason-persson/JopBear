@@ -15,20 +15,18 @@ impl JoplinFile {
     const MARKER_LEN: usize = Self::MARKER.len();
 
     pub fn build(content: &str) -> Result<JoplinFile, &'static str> {
-        let front_matter_start_pos = Self::find_front_matter_start(content)
-            .ok_or("Could not find front matter start marker")?;
+        let front_matter_start_pos = Self::find_front_matter_start(content)?;
 
-        let front_matter_end_pos = Self::find_front_matter_end(front_matter_start_pos, content)
-            .ok_or("Could not find end of front matter")?;
+        let front_matter_end_pos = Self::find_front_matter_end(front_matter_start_pos, content)?;
 
         let front_matter = content
             .get(front_matter_start_pos..front_matter_end_pos)
             .ok_or("Could not find front matter")?;
 
-        let title = Self::find_title(front_matter).ok_or("Could not find title")?;
+        let title = Self::find_title(front_matter)?;
 
-        let created = Self::find_created(front_matter).ok_or("Could not find created")?;
-        let updated = Self::find_updated(front_matter).ok_or("Could not find updated")?;
+        let created = Self::find_created(front_matter)?;
+        let updated = Self::find_updated(front_matter)?;
 
         Ok(JoplinFile {
             title: title.to_string(),
@@ -40,41 +38,52 @@ impl JoplinFile {
         })
     }
 
-    fn find_front_matter_start(content: &str) -> Option<usize> {
-        let start_pos = content.find(Self::MARKER)?;
-        Some(start_pos)
+    fn find_front_matter_start(content: &str) -> Result<usize, &'static str> {
+        content
+            .find(Self::MARKER)
+            .ok_or("Could not find front matter start marker")
     }
 
-    fn find_front_matter_end(fm_start_pos: usize, content: &str) -> Option<usize> {
+    fn find_front_matter_end(fm_start_pos: usize, content: &str) -> Result<usize, &'static str> {
         let after_start_pos = fm_start_pos + Self::MARKER_LEN;
-        let content_after_start = &content.get(after_start_pos..)?;
+        let content_after_start = &content
+            .get(after_start_pos..)
+            .ok_or("Could not find front matter after start marker")?;
 
-        let end_relative = content_after_start.find(Self::MARKER)?;
+        let end_relative = content_after_start
+            .find(Self::MARKER)
+            .ok_or("Could not find end of front matter")?;
         let end_pos = after_start_pos + end_relative + Self::MARKER_LEN;
 
         if end_pos > content.len() {
-            None
+            Err("Could not find end of front matter")
         } else {
-            Some(end_pos)
+            Ok(end_pos)
         }
     }
 
-    fn find_title(front_matter: &str) -> Option<&str> {
+    fn find_title(front_matter: &str) -> Result<&str, &'static str> {
         const TITLE_KEY: &str = "title:";
-        Self::find_front_matter_value(front_matter, TITLE_KEY)
+        Self::find_front_matter_value(front_matter, TITLE_KEY).ok_or("Could not find title")
     }
 
-    fn find_created(front_matter: &str) -> Option<DateTime<Utc>> {
+    fn find_created(front_matter: &str) -> Result<DateTime<Utc>, &'static str> {
         const CREATED_KEY: &str = "created:";
-        let created = Self::find_front_matter_value(front_matter, CREATED_KEY)?;
+        let created = Self::find_front_matter_value(front_matter, CREATED_KEY)
+            .ok_or("Could not find created")?;
 
-        DateTime::parse_from_rfc3339(created).ok().map(|result| result.to_utc())
+        DateTime::parse_from_rfc3339(created)
+            .map(|result| result.to_utc())
+            .map_err(|_| "Could not parse created date")
     }
-    fn find_updated(front_matter: &str) -> Option<DateTime<Utc>> {
+    fn find_updated(front_matter: &str) -> Result<DateTime<Utc>, &'static str> {
         const UPDATED_KEY: &str = "updated:";
-        let updated = Self::find_front_matter_value(front_matter, UPDATED_KEY)?;
+        let updated = Self::find_front_matter_value(front_matter, UPDATED_KEY)
+            .ok_or("Could not find updated")?;
 
-        DateTime::parse_from_rfc3339(updated).ok().map(|result| result.to_utc())
+        DateTime::parse_from_rfc3339(updated)
+            .map(|result| result.to_utc())
+            .map_err(|_| "Could not parse updated date")
     }
 
     fn find_front_matter_value<'a>(front_matter: &'a str, key: &'a str) -> Option<&'a str> {
@@ -100,11 +109,11 @@ mod tests {
 
     #[test]
     fn find_front_matter_start() {
-        let test_cases: Vec<(&str, Option<usize>)> = vec![
-            ("---\n", Some(0)),
-            ("\n---\n", Some(1)),
-            ("", None),
-            ("---", None),
+        let test_cases: Vec<(&str, Result<usize, &'static str>)> = vec![
+            ("---\n", Ok(0)),
+            ("\n---\n", Ok(1)),
+            ("", Err("Could not find front matter start marker")),
+            ("---", Err("Could not find front matter start marker")),
         ];
 
         for (test_case, expected) in test_cases {
@@ -115,11 +124,15 @@ mod tests {
 
     #[test]
     fn find_front_matter_end() {
-        let test_cases: Vec<(&str, usize, Option<usize>)> = vec![
-            ("---\n blah ---\n", 0, Some(14)),
-            ("\n---\n blah\n more blah\n ---\n", 1, Some(27)),
-            ("", 0, None),
-            ("---\n blah ---", 0, None),
+        let test_cases: Vec<(&str, usize, Result<usize, &'static str>)> = vec![
+            ("---\n blah ---\n", 0, Ok(14)),
+            ("\n---\n blah\n more blah\n ---\n", 1, Ok(27)),
+            ("", 0, Err("Could not find front matter after start marker")),
+            (
+                "---\n blah ---",
+                0,
+                Err("Could not find end of front matter"),
+            ),
         ];
 
         for (test_case, start_pos, expected) in test_cases {
@@ -130,11 +143,11 @@ mod tests {
 
     #[test]
     fn find_title() {
-        let test_cases: Vec<(&str, Option<&str>)> = vec![
-            ("---\ntitle: Test\n---\n", Some("Test")),
-            ("---\ntitle:   Test  \n---\n", Some("Test")),
-            ("---\ntitle:  \n---\n", None),
-            ("---\n\n---", None),
+        let test_cases: Vec<(&str, Result<&str, &'static str>)> = vec![
+            ("---\ntitle: Test\n---\n", Ok("Test")),
+            ("---\ntitle:   Test  \n---\n", Ok("Test")),
+            ("---\ntitle:  \n---\n", Err("Could not find title")),
+            ("---\n\n---", Err("Could not find title")),
         ];
 
         for (test_case, expected) in test_cases {
@@ -145,13 +158,29 @@ mod tests {
 
     #[test]
     fn find_created() {
-        let test_cases: Vec<(&str, Option<DateTime<Utc>>)> = vec![
-            ("---\ncreated: 2024-03-07T23:22:26Z\n---\n", Some(DateTime::parse_from_rfc3339("2024-03-07 23:22:26Z").unwrap().to_utc())),
-            ("---\ncreated: 2024-03-07T23:22:26+11:00\n---\n", Some(DateTime::parse_from_rfc3339("2024-03-07 23:22:26+11:00").unwrap().to_utc())),
-            ("---\ncreated: 2024-03-07T23:22:26\n---\n", None),
-            ("---\ncreated: 2024-03-07\n---\n", None),
-            ("---\ncreated:\n---\n", None),
-            ("---\n\n---\n", None),
+        let test_cases: Vec<(&str, Result<DateTime<Utc>, &'static str>)> = vec![
+            (
+                "---\ncreated: 2024-03-07T23:22:26Z\n---\n",
+                Ok(DateTime::parse_from_rfc3339("2024-03-07 23:22:26Z")
+                    .unwrap()
+                    .to_utc()),
+            ),
+            (
+                "---\ncreated: 2024-03-07T23:22:26+11:00\n---\n",
+                Ok(DateTime::parse_from_rfc3339("2024-03-07 23:22:26+11:00")
+                    .unwrap()
+                    .to_utc()),
+            ),
+            (
+                "---\ncreated: 2024-03-07T23:22:26\n---\n",
+                Err("Could not parse created date"),
+            ),
+            (
+                "---\ncreated: 2024-03-07\n---\n",
+                Err("Could not parse created date"),
+            ),
+            ("---\ncreated:\n---\n", Err("Could not find created")),
+            ("---\n\n---\n", Err("Could not find created")),
         ];
 
         for (test_case, expected) in test_cases {
@@ -162,13 +191,29 @@ mod tests {
 
     #[test]
     fn find_updated() {
-        let test_cases: Vec<(&str, Option<DateTime<Utc>>)> = vec![
-            ("---\nupdated: 2024-03-07T23:22:26Z\n---\n", Some(DateTime::parse_from_rfc3339("2024-03-07 23:22:26Z").unwrap().to_utc())),
-            ("---\nupdated: 2024-03-07T23:22:26+11:00\n---\n", Some(DateTime::parse_from_rfc3339("2024-03-07 23:22:26+11:00").unwrap().to_utc())),
-            ("---\nupdated: 2024-03-07T23:22:26\n---\n", None),
-            ("---\nupdated: 2024-03-07\n---\n", None),
-            ("---\nupdated:\n---\n", None),
-            ("---\n\n---\n", None),
+        let test_cases: Vec<(&str, Result<DateTime<Utc>, &'static str>)> = vec![
+            (
+                "---\nupdated: 2024-03-07T23:22:26Z\n---\n",
+                Ok(DateTime::parse_from_rfc3339("2024-03-07 23:22:26Z")
+                    .unwrap()
+                    .to_utc()),
+            ),
+            (
+                "---\nupdated: 2024-03-07T23:22:26+11:00\n---\n",
+                Ok(DateTime::parse_from_rfc3339("2024-03-07 23:22:26+11:00")
+                    .unwrap()
+                    .to_utc()),
+            ),
+            (
+                "---\nupdated: 2024-03-07T23:22:26\n---\n",
+                Err("Could not parse updated date"),
+            ),
+            (
+                "---\nupdated: 2024-03-07\n---\n",
+                Err("Could not parse updated date"),
+            ),
+            ("---\nupdated:\n---\n", Err("Could not find updated")),
+            ("---\n\n---\n", Err("Could not find updated")),
         ];
 
         for (test_case, expected) in test_cases {
@@ -209,17 +254,18 @@ The content\n",
                 joplin_file.front_matter,
                 "---\ntitle: Test\ncreated: 2024-03-07T23:22:26Z\nupdated: 2024-04-07T08:34:52Z\n---\n".to_string()
             );
-            assert_eq!(
-                joplin_file.title,
-                "Test".to_string()
-            );
+            assert_eq!(joplin_file.title, "Test".to_string());
             assert_eq!(
                 joplin_file.created,
-                DateTime::parse_from_rfc3339("2024-03-07 23:22:26Z").unwrap().to_utc()
+                DateTime::parse_from_rfc3339("2024-03-07 23:22:26Z")
+                    .unwrap()
+                    .to_utc()
             );
             assert_eq!(
                 joplin_file.updated,
-                DateTime::parse_from_rfc3339("2024-04-07T08:34:52Z").unwrap().to_utc()
+                DateTime::parse_from_rfc3339("2024-04-07T08:34:52Z")
+                    .unwrap()
+                    .to_utc()
             );
         }
     }
