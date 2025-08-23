@@ -32,16 +32,16 @@ pub fn find_files(dir: &str) -> Result<Vec<PathBuf>, String> {
     Ok(paths)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_find_files() {
-        let result = find_files("/Users/jason/temp").unwrap();
-
-        println!("{:?}", result);
-
-        let z = 0;
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//
+//     #[test]
+//     fn test_find_files() {
+//         let result = find_files("/Users/jason/temp").unwrap();
+//
+//         println!("{:?}", result);
+//
+//         let z = 0;
+//     }
+// }
