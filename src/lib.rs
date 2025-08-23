@@ -1,4 +1,6 @@
 pub mod joplin_file;
+pub mod joplin_file_finder;
+
 pub use joplin_file::JoplinFile;
 
 pub struct Config {
