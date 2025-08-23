@@ -1,0 +1,13 @@
+when:
+  - event: push
+    branch: main
+
+steps:
+  - name: build
+    image: rust:latest
+    commands:
+      - cargo build
+  - name: test
+    image: rust:latest
+    commands:
+      - cargo test
