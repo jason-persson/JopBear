@@ -4,7 +4,10 @@ use glob::glob_with;
 use std::fs::File;
 use std::fs::create_dir_all;
 use std::io::Write;
+#[cfg(target_os = "macos")]
 use std::os::darwin::fs::FileTimesExt;
+#[cfg(target_os = "windows")]
+use std::os::windows::fs::FileTimesExt;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -57,31 +60,39 @@ pub fn write_joplin_files<P: AsRef<Path>>(
             + std::time::Duration::from_secs(joplin_file.created.timestamp() as u64);
         let modified_time = SystemTime::UNIX_EPOCH
             + std::time::Duration::from_secs(joplin_file.updated.timestamp() as u64);
-        file.set_times(
-            std::fs::FileTimes::new()
-                .set_accessed(modified_time) // Usually set to same as modified
-                .set_modified(modified_time)
-                .set_created(created_time),
-        )
-        .map_err(|e| format!("Error setting file times: {}", e.to_string()))?;
+
+        let mut times = std::fs::FileTimes::new()
+            .set_accessed(modified_time)
+            .set_modified(modified_time);
+        // On macOS and Windows, also set creation time
+        // Adding Windows is a bit pointless because Bear is a macOS and iOS app only
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            times = times.set_created(created_time);
+        }
+        file.set_times(times)
+            .map_err(|e| format!("Error setting file times: {}", e.to_string()))?;
     }
 
     Ok(())
 }
 
-pub fn copy_resources<P: AsRef<Path>>(
-    source_dir: P,
-    target_dir: P,
-) -> Result<(), String> {
+pub fn copy_resources<P: AsRef<Path>>(source_dir: P, target_dir: P) -> Result<(), String> {
     let source_resources_dir = source_dir.as_ref().join("_resources");
     let target_resources_dir = target_dir.as_ref().join("_resources");
 
     if !source_resources_dir.exists() {
-        return Err(format!("The source path: {:?} does not exist", source_resources_dir));
+        return Err(format!(
+            "The source path: {:?} does not exist",
+            source_resources_dir
+        ));
     }
 
     if !source_resources_dir.is_dir() {
-        return Err(format!("The source path: {:?} is not a directory", source_resources_dir));
+        return Err(format!(
+            "The source path: {:?} is not a directory",
+            source_resources_dir
+        ));
     }
 
     copy_dir_recursively(source_resources_dir, target_resources_dir)
@@ -90,10 +101,7 @@ pub fn copy_resources<P: AsRef<Path>>(
     Ok(())
 }
 
-pub fn copy_dir_recursively<P: AsRef<Path>>(
-    source_dir: P,
-    target_dir: P,
-) -> std::io::Result<()> {
+pub fn copy_dir_recursively<P: AsRef<Path>>(source_dir: P, target_dir: P) -> std::io::Result<()> {
     let source_dir = source_dir.as_ref();
     let target_dir = target_dir.as_ref();
 
@@ -112,7 +120,6 @@ pub fn copy_dir_recursively<P: AsRef<Path>>(
 
     Ok(())
 }
-
 
 pub fn find_files(dir: &str) -> Result<Vec<PathBuf>, String> {
     let path = Path::new(dir);
