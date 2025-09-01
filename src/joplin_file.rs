@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
+use std::path::{Path, PathBuf};
 
+#[derive(Debug)]
 pub struct JoplinFile {
     pub title: String,
     pub created: DateTime<Utc>,
@@ -8,13 +10,22 @@ pub struct JoplinFile {
     pub front_matter: String,
     pub front_matter_start_pos: usize,
     pub front_matter_end_pos: usize,
+
+    pub body: String,
+
+    pub tags: Option<String>,
+
+    pub relative_path: PathBuf,
 }
 
 impl JoplinFile {
     const MARKER: &'static str = "---\n";
     const MARKER_LEN: usize = Self::MARKER.len();
 
-    pub fn build(content: &str) -> Result<JoplinFile, &'static str> {
+    pub fn build<P: AsRef<Path>>(
+        relative_path: P,
+        content: &str,
+    ) -> Result<JoplinFile, &'static str> {
         let front_matter_start_pos = Self::find_front_matter_start(content)?;
 
         let front_matter_end_pos = Self::find_front_matter_end(front_matter_start_pos, content)?;
@@ -23,10 +34,15 @@ impl JoplinFile {
             .get(front_matter_start_pos..front_matter_end_pos)
             .ok_or("Could not find front matter")?;
 
+        let body = content[front_matter_end_pos..].trim().to_string();
+
         let title = Self::find_title(front_matter)?;
 
         let created = Self::find_created(front_matter)?;
         let updated = Self::find_updated(front_matter)?;
+
+        let relative_path = relative_path.as_ref().to_path_buf();
+        let tags = Self::build_tags(&relative_path);
 
         Ok(JoplinFile {
             title: title.to_string(),
@@ -35,6 +51,9 @@ impl JoplinFile {
             front_matter: front_matter.to_string(),
             front_matter_start_pos,
             front_matter_end_pos,
+            body,
+            relative_path,
+            tags,
         })
     }
 
@@ -100,6 +119,29 @@ impl JoplinFile {
             Some(value) if !value.is_empty() => Some(value),
             _ => None,
         }
+    }
+
+    fn build_tags<P: AsRef<Path>>(relative_path: P) -> Option<String> {
+        let path = relative_path.as_ref();
+
+        let tag_count = path.components().count();
+        if tag_count == 0 {
+            return None;
+        }
+
+        let mut tags = "#".to_string();
+        path.iter().enumerate().for_each(|(i, component)| {
+            let component = component.to_str().unwrap().replace(" ", "-");
+
+            if i < tag_count - 1 {
+                tags.push_str(&component);
+                tags.push('/')
+            } else {
+                tags.push_str(component.trim_end_matches(".md"));
+            }
+        });
+
+        Some(tags)
     }
 }
 
@@ -223,16 +265,37 @@ mod tests {
     }
 
     #[test]
+    fn test_build_tags() {
+        let test_cases: Vec<(&str, Option<String>)> = vec![
+            ("", None),
+            ("blah.md", Some("#blah".to_string())),
+            ("foo/bar/baz.md", Some("#foo/bar/baz".to_string())),
+        ];
+
+        for (relative_path, expected) in test_cases {
+            let result = JoplinFile::build_tags(relative_path);
+            assert_eq!(result, expected);
+        }
+    }
+
+    #[test]
     fn test_build() {
         // arrange
-        let test_cases = vec![
-            "\
+        let test_cases: Vec<(&str, &str, &str, &str)> = vec![
+            (
+                "foo.md",
+                "\
 ---
 title: Test
 created: 2024-03-07T23:22:26Z
 updated: 2024-04-07T08:34:52Z
 ---\n",
-            "\
+                "",
+                "#foo",
+            ),
+            (
+                "blah bah/foo.md",
+                "\
 ---
 title: Test
 created: 2024-03-07T23:22:26Z
@@ -240,11 +303,14 @@ updated: 2024-04-07T08:34:52Z
 ---
 
 The content\n",
+                "The content",
+                "#blah-bah/foo",
+            ),
         ];
 
-        for test_case in test_cases {
+        for (relative_path, content, body, expected_tags) in test_cases {
             // act
-            let result = JoplinFile::build(test_case);
+            let result = JoplinFile::build(relative_path, content);
 
             // assert
             assert!(result.is_ok());
@@ -254,6 +320,7 @@ The content\n",
                 joplin_file.front_matter,
                 "---\ntitle: Test\ncreated: 2024-03-07T23:22:26Z\nupdated: 2024-04-07T08:34:52Z\n---\n".to_string()
             );
+            assert_eq!(joplin_file.body, body.to_string());
             assert_eq!(joplin_file.title, "Test".to_string());
             assert_eq!(
                 joplin_file.created,
@@ -267,6 +334,7 @@ The content\n",
                     .unwrap()
                     .to_utc()
             );
+            assert_eq!(joplin_file.tags, Some(expected_tags.to_string()));
         }
     }
 }
