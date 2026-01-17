@@ -8,5 +8,5 @@ jobs:
       
       - name: Install rust toolchain
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
+          apt-get update
+          apt-get install rustup
