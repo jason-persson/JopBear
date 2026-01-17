@@ -1,6 +1,9 @@
 on: [push]
 jobs:
-  test:
+  build:
     runs-on: docker
+    container:
+      image: rust:latest
     steps:
-      - run: echo All good!
+      - name: Checkout repository
+        uses: actions/checkout@v4
