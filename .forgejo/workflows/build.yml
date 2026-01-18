@@ -7,6 +7,6 @@ jobs:
         uses: actions/checkout@v4 # This runs in the runner's default node-ready container
 
       - name: Build Rust Project
-        uses: ./.forgejo/workflows/rust-action
+        uses: ./.forgejo/actions/rust-action
         with:
           command: build
