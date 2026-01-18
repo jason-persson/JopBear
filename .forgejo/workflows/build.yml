@@ -1,0 +1,12 @@
+on: [push]
+jobs:
+  build:
+    runs-on: docker
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4 # This runs in the runner's default node-ready container
+
+      - name: Build Rust Project
+        uses: ./.forgejo/workflows/rust-action
+        with:
+          command: build
