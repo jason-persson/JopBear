@@ -10,3 +10,8 @@ jobs:
         uses: ./.forgejo/actions/rust-action
         with:
           command: build
+
+      - name: Test Rust Project
+        uses: ./.forgejo/actions/rust-action
+        with:
+          command: test
